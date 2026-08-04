@@ -1,0 +1,46 @@
+# This repository is documentation, almost entirely — a dead relative link
+# or an unclosed fence here is the whole defect, not a symptom of one.
+name: docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  markdown-lint:
+    name: structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: DavidAnson/markdownlint-cli2-action@28a7e8bdb81fd8ad675883de92c758ab78e0ce10 # v24
+        with:
+          globs: "**/*.md"
+
+  link-check:
+    name: links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          # Relative-link integrity is what matters most here; a slow or
+          # rate-limited external host should not fail this repository's CI.
+          args: >-
+            --no-progress
+            --accept 200,204,206,429
+            --exclude-loopback
+            './**/*.md'
+          fail: true
