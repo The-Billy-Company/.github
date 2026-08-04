@@ -24,6 +24,11 @@ More is on the way. The
 [repository list](https://github.com/orgs/The-Billy-Company/repositories) will
 always be ahead of this page.
 
+Everything we ship out here follows one release model, end to end -
+[`RELEASING.md`](https://github.com/The-Billy-Company/.github/blob/main/RELEASING.md)
+if you're curious how a change gets from a commit to a package you can
+install.
+
 Thank you for reading, we are excited to explore together.
 
 [billylives.com](https://billylives.com)
