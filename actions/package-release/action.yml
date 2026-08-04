@@ -1,0 +1,54 @@
+name: package-release
+description: >-
+  The Billy-Company OSS release contract: version parity, changelog fragment
+  quality, tag-on-branch and CI-green gating, and registry-idempotency
+  probes — one implementation, called byte-identically from every
+  publishable repo's ci.yml and release.yml.
+inputs:
+  command:
+    description: >-
+      version | changelog | ci-status | tag-ancestor | registry-probe |
+      selftest — see validate.py's module docstring for each command's
+      arguments.
+    required: true
+  args:
+    description: the command's remaining CLI arguments, space-separated.
+    required: false
+    default: ""
+outputs:
+  result:
+    description: the command's last stdout line (registry-probe's absent/present/error; "ok" otherwise).
+    value: ${{ steps.run.outputs.result }}
+runs:
+  using: composite
+  steps:
+    # Only `changelog` and `selftest` shell out to a real towncrier; the other
+    # four commands are stdlib-only and pay no setup cost.
+    - if: inputs.command == 'changelog' || inputs.command == 'selftest'
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+      with:
+        enable-cache: false
+
+    - id: run
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        set +e
+        if [[ "${{ inputs.command }}" == "changelog" || "${{ inputs.command }}" == "selftest" ]]; then
+          uv run --no-project --python 3.12 --with towncrier==25.8.0 \
+            python3 "${{ github.action_path }}/validate.py" ${{ inputs.command }} ${{ inputs.args }} \
+            >/tmp/pkgrelease.out 2>/tmp/pkgrelease.err
+        else
+          python3 "${{ github.action_path }}/validate.py" ${{ inputs.command }} ${{ inputs.args }} \
+            >/tmp/pkgrelease.out 2>/tmp/pkgrelease.err
+        fi
+        code=$?
+        cat /tmp/pkgrelease.out
+        cat /tmp/pkgrelease.err >&2
+        {
+          echo "result<<PKGRELEASE_EOF"
+          tail -n1 /tmp/pkgrelease.out
+          echo "PKGRELEASE_EOF"
+        } >> "$GITHUB_OUTPUT"
+        exit "$code"
