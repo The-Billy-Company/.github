@@ -1,0 +1,6 @@
+{
+  "name": "Zig search-face CI (Billy pattern)",
+  "description": "Starter CI for a new Zig package built on the irregex engine — a sibling checkout, an engine job, per-language binding jobs, and a stable release-ready aggregate check. A starting point to adapt, not synchronized authority; see RELEASING.md.",
+  "categories": ["Zig"],
+  "filePatterns": ["build\\.zig\\.zon$"]
+}

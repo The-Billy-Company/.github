@@ -1,0 +1,6 @@
+{
+  "name": "Rust library CI (Billy pattern)",
+  "description": "Starter CI for a standalone Rust library — fmt, clippy, test, rustdoc, MSRV, cargo-deny, a publish dry-run, and a stable release-ready aggregate check. A starting point to adapt, not synchronized authority; see RELEASING.md.",
+  "categories": ["Rust"],
+  "filePatterns": ["Cargo\\.toml$"]
+}

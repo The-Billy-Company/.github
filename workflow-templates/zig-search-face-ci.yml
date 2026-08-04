@@ -1,0 +1,127 @@
+# Starter CI for a new Zig package built on top of `irregex`, in the shape
+# proven by gist / relate / blast — NOT synchronized authority. Copy this
+# into a new repository's `.github/workflows/ci.yml` and adapt it; it is
+# never updated in place from here, because each real package's sibling
+# graph, native matrix, and adverse gates end up materially different. See
+# https://github.com/The-Billy-Company/.github/blob/main/RELEASING.md for
+# the release lifecycle this feeds into once the package is ready to ship.
+name: ci
+
+on:
+  push:
+    branches: [$default-branch]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Keep this in lockstep with the sibling `irregex` checkout's own pin —
+  # the two compile into one artifact and cannot disagree about the
+  # compiler.
+  ZIG_VERSION: 0.16.0
+
+jobs:
+  engine:
+    name: engine (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # TODO: rename to this repository's own directory name.
+        working-directory: PACKAGE_NAME
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: PACKAGE_NAME
+          persist-credentials: false
+      # `irregex` resolves as a sibling checkout at its default branch, not a
+      # pinned commit — a path dependency has no pin to honor. A release
+      # pins the real registry range instead; see RELEASING.md.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: The-Billy-Company/irregex
+          path: irregex
+          persist-credentials: false
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - working-directory: PACKAGE_NAME
+        run: zig build check
+      - working-directory: PACKAGE_NAME
+        run: zig build test
+
+  # A binding suite needs a built binary/library first, so give it its own
+  # job per language rather than folding it into `engine` above — a Rust
+  # clippy nit and a Zig regression are different news, and one job would
+  # report them as the same red X.
+  bindings-python:
+    name: bindings (python)
+    needs: engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: PACKAGE_NAME
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: The-Billy-Company/irregex
+          path: irregex
+          persist-credentials: false
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+      - working-directory: PACKAGE_NAME
+        run: zig build
+      - working-directory: PACKAGE_NAME/bindings/python
+        run: uv run pytest
+
+  bindings-rust:
+    name: bindings (rust)
+    needs: engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: PACKAGE_NAME
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: The-Billy-Company/irregex
+          path: irregex
+          persist-credentials: false
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+      - working-directory: PACKAGE_NAME
+        run: zig build
+      - working-directory: PACKAGE_NAME/bindings/rust
+        run: |
+          cargo fmt --all --check
+          cargo clippy --all-targets --all-features --locked -- -D warnings
+          cargo test --locked
+
+  # The single check the release preflight in RELEASING.md waits on — add
+  # every job above (and any this template doesn't know about yet) to
+  # `needs:` here as the matrix grows, so the release pipeline keeps polling
+  # one stable name instead of the job list.
+  release-ready:
+    name: release-ready
+    needs: [engine, bindings-python, bindings-rust]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "ready"
