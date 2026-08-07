@@ -42,8 +42,8 @@ Every step, spelled out:
 
 1. **Conventional commit.** `feat:` / `fix:` / `perf:` / `refactor:` / `deps:`
    land in the changelog; `docs:` / `test:` / `build:` / `ci:` / `chore:` /
-   `style:` stay hidden from it. The type is what release-please reads to
-   decide whether the next release is a patch or a minor.
+   `style:` stay hidden from it. The type is also what picks the next version
+   — see [What Picks the Number](#what-picks-the-number).
 2. **Towncrier fragment.** A one- or two-sentence news fragment
    (`changelog.d/+<slug>.<type>.md`) lands in the same PR as the change it
    describes. This is the release note a person reads — the conventional
@@ -109,6 +109,49 @@ narrower and honest — no write starts before every local and CI precondition
 has passed, and any external partial failure is detected, immutable on the
 tag, and safely resumable, rather than silently repeated or silently
 abandoned.
+
+## What Picks the Number
+
+Plain semver over the commit types in the window since the last tag. Every
+repository here uses release-please's stock `default` strategy, and no
+repository puts a thumb on the scale:
+
+| In the window since the last tag | Next version |
+| --- | --- |
+| any `!` suffix, or a `BREAKING CHANGE:` footer | major |
+| any `feat` | minor |
+| anything else — `fix`, `perf`, `refactor`, `deps`, `ci`, … | patch |
+
+The largest change in the window wins; one `feat` among thirty `fix`es is a
+minor. Read the corollary the other way too, because it surprises people: a
+long unbroken run of minor releases is **not** the tooling refusing to cut a
+patch. It means every window so far happened to carry a feature. A window that
+genuinely holds no `feat` cuts a patch, with nothing to configure.
+
+**Below 1.0.0 the table shifts one column left**, which is what
+`bump-minor-pre-major` and `bump-patch-for-minor-pre-major` in a pre-1.0
+repository's `release-please-config.json` are for: a breaking change takes the
+minor rather than declaring 1.0.0 on your behalf, so `0.1.0` goes to `0.2.0`
+for both a break and a feature, and to `0.1.1` for everything else.
+release-please reads those two settings **only** while the version is below
+1.0.0. They go inert the moment a package ships 1.0.0, and should be deleted
+from the config in that same release — left behind, they read like a bump
+policy that is no longer being consulted, which is worse than absent.
+
+To pin a number the table would not pick — a version chosen to line up with a
+downstream pin, or a patch on a minor nobody cut — put a `Release-As:` footer
+in a commit body on the default branch:
+
+```text
+feat: name the package a listing governs, not the file it was written in
+
+Release-As: 1.3.1
+```
+
+The newest such footer in the window wins and overrides everything above,
+including a breaking change. It is the one place in this pipeline where a
+human types a version, so type it deliberately: a release that skips a number
+is a question every downstream reader has to answer once.
 
 ## Trusted Publishing
 

@@ -23,6 +23,11 @@ appear in the changelog; `docs:` / `test:` / `build:` / `ci:` / `chore:` /
 matters to someone installing the package gets a towncrier fragment in the
 same PR — see the repository's own `changelog.d/README.md`.
 
+The type also picks the version: a `!` or `BREAKING CHANGE:` takes the major,
+`feat` takes the minor, everything else takes the patch. [What Picks the
+Number](RELEASING.md#what-picks-the-number) has the pre-1.0 variant and the
+`Release-As:` override.
+
 ## Licensing
 
 Apache-2.0 across every public repository in this org, unless that
