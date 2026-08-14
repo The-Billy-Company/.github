@@ -1,4 +1,5 @@
-"""Fragments are the release notes. Prove they exist, parse, and fold.
+"""Fragments are the release notes. Prove they exist, parse, and fold — then
+hand the folded section to the GitHub Release that names it.
 
 `towncrier build --draft` alone is not the gate: it silently drops any
 filename it cannot parse and happily renders a clean changelog over that
@@ -7,6 +8,15 @@ with no complaint. This checks the filenames and bodies itself — with a
 message that names the exact file and the exact rule — and then still shells
 to `towncrier` for the belt-and-suspenders vacuous-green guard, because the
 two catch different failure shapes.
+
+`notes` closes the other end. release-please's `skip-changelog` stops the bot
+writing CHANGELOG.md so towncrier can own it, but that key governs the *file*;
+composing the release **body** is a separate path inside release-please and
+still runs, off conventional-commit subjects filtered through
+`changelog-sections`. A repo whose real notes are fragments therefore ships a
+release page built from commit subjects — irregex v2.1.1 published two lines
+against a hundred and ten, because eleven of its thirteen commits were `ci:`
+and `docs:` and both are `hidden`.
 """
 
 from __future__ import annotations
@@ -110,12 +120,86 @@ def check(
                 )
 
     if version is not None:
-        heading = f"## [{version}]"
-        changelog_text = (root / changelog["file"]).read_text(encoding="utf-8")
-        if not any(line.startswith(heading) for line in changelog_text.splitlines()):
+        if _section(root / changelog["file"], version) is None:
             faults.append(
-                f"{changelog['file']}: no {heading!r} entry — "
+                f"{changelog['file']}: no '## [{version}]' entry — "
                 f"run `towncrier build --version {version}` and commit it before tagging"
             )
 
     return faults
+
+
+# --- notes: the folded section, rendered for a GitHub Release body ----------
+
+# GitHub rejects a release body over 125,000 characters. Held a little under
+# it: the notice a truncation appends has to fit inside the same budget.
+CEILING = 125_000
+NOTICE_BUDGET = 400
+
+
+def _section(changelog: pathlib.Path, version: str) -> tuple[str, str] | None:
+    """One version's heading and body, or None if the fold never landed it.
+
+    The span runs from `## [VERSION]` to the next `## ` at column zero, so a
+    `### Added` subsection cannot end it early. The body is towncrier's own
+    render — the same bytes `towncrier build --draft` printed on the release
+    PR — so posting it is fidelity-preserving rather than a second opinion.
+    """
+    if not changelog.is_file():
+        return None
+    lines = changelog.read_text(encoding="utf-8").splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if match := re.match(r"^## \[([^\]]+)\]", line):
+            if match[1] == version:
+                start = i
+            elif start is not None:
+                return lines[start], "\n".join(lines[start + 1 : i]).strip("\n")
+        elif line.startswith("## ") and start is not None:
+            return lines[start], "\n".join(lines[start + 1 : i]).strip("\n")
+    if start is None:
+        return None
+    return lines[start], "\n".join(lines[start + 1 :]).strip("\n")
+
+
+def _anchor(heading: str) -> str:
+    """GitHub's own slug for a heading, so a truncation links where it says."""
+    text = heading.removeprefix("## ").strip().lower()
+    return "#" + re.sub(r"[^\w -]", "", text).replace(" ", "-")
+
+
+def notes(root: pathlib.Path, changelog: dict, version: str, repo: str | None) -> tuple[list[str], str]:
+    """Render the release body for `version`, and any fault that blocks it."""
+    found = _section(root / changelog["file"], version)
+    if found is None:
+        return [
+            f"{changelog['file']}: no '## [{version}]' section to publish — the fold "
+            f"never ran for this version, or the tag names a version nothing released"
+        ], ""
+    heading, body = found
+    if not body:
+        return [f"{changelog['file']}: the '## [{version}]' section is empty"], ""
+    if len(body) <= CEILING:
+        return [], body + "\n"
+
+    # Over the ceiling the API would reject the whole body with the tag already
+    # pushed and immutable, so this posts what fits: cut at a top-level bullet
+    # rather than mid-sentence, which is the difference between a shortened
+    # page and a corrupted one.
+    slug = repo or "OWNER/REPO"
+    link = f"https://github.com/{slug}/blob/v{version}/{changelog['file']}{_anchor(heading)}"
+    notice = (
+        f"\n\nThis section is {len(body):,} characters and GitHub holds "
+        f"{CEILING:,}. The rest is in [{changelog['file']}]({link})."
+    )
+    if len(notice) > NOTICE_BUDGET:  # pragma: no cover - the URL would have to be absurd
+        return ["the truncation notice does not fit its own budget"], ""
+    keep = body[: CEILING - NOTICE_BUDGET]
+    if (cut := keep.rfind("\n- ")) > 0:
+        keep = keep[:cut]
+    print(
+        f"::notice::{version} is {len(body):,} chars against GitHub's {CEILING:,}; "
+        f"posted {len(keep):,} to a bullet boundary and linked the rest",
+        file=sys.stderr,
+    )
+    return [], keep.rstrip() + notice + "\n"
