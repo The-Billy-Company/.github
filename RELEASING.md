@@ -153,6 +153,39 @@ including a breaking change. It is the one place in this pipeline where a
 human types a version, so type it deliberately: a release that skips a number
 is a question every downstream reader has to answer once.
 
+## What the Release Page Says
+
+A release page is written for the reader who was not following along. The
+finalize step writes the body from the curated `CHANGELOG.md` section; what
+follows is what a person owes the page on top of that fold — it is the prose
+half of step 5, the one manual gate in the pipeline. `irregex`'s releases are
+the worked example.
+
+- **The title is `vX.Y.Z - <name>`** — a Title Case noun phrase or short
+  sentence naming the release's one idea, informative before it is clever:
+  `v1.0.0 - The ABI Is a Promise`, `v2.1.1 - The Release Cuts Itself`. Never a
+  bare version, and never the package name repeated — the repository the page
+  sits in already says it.
+- **A narrative opens the body**, above `### Added`: two to four short
+  paragraphs whose first sentence carries the whole release ("X.Y.Z is the
+  release where …"). It names the biggest items with their real numbers, says
+  what was wrong out loud rather than around it, and admits what the release
+  does not do. The mechanism is a `note` towncrier fragment, declared first in
+  the config so it folds above the sections; on a page already published, edit
+  the release body directly — the changelog file keeps only the fold.
+- **The fold is the record.** Below the narrative, the body is the exact
+  `## [X.Y.Z]` section from `CHANGELOG.md`, unabridged — never
+  `generate_release_notes: true`, and never a summary assembled from commit
+  subjects. A 1.0.0 whose fold outgrows GitHub's body ceiling links the
+  changelog and carries the shape of it instead: the narrative, an Install
+  section, thematic headed sections, and a closing section placing the package
+  in the family.
+- **The voice is the house shape.** One idea per paragraph, three sentences as
+  the ceiling. No tables and no horizontal rules. Bold only as a lead term
+  inside a list item, never opening a paragraph. Headings are labels in Title
+  Case. Links live inside sentences. A number in prose is checkable or absent.
+  Instructions are imperative; descriptions take the subject as subject.
+
 ## Trusted Publishing
 
 Every registry write authenticates with short-lived OIDC, minted per-run by
