@@ -7,9 +7,9 @@ description: >-
 inputs:
   command:
     description: >-
-      version | changelog | ci-status | tag-ancestor | registry-probe |
-      selftest — see validate.py's module docstring for each command's
-      arguments.
+      version | changelog | notes | ci-status | tag-ancestor |
+      registry-probe | selftest — see validate.py's module docstring for each
+      command's arguments.
     required: true
   args:
     description: the command's remaining CLI arguments, space-separated.

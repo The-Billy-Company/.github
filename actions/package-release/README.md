@@ -54,11 +54,12 @@ go_module = "github.com/The-Billy-Company/irregex/bindings/go"
 - `cargo-package` — a `version` under a single crate's `[package]` (`sheng`,
   `brigade`).
 
-## The six commands
+## The seven commands
 
 ```bash
 python3 validate.py version    --root <repo> [--tag vX.Y.Z] [--json]
 python3 validate.py changelog  --root <repo> [--version X.Y.Z] [--require-fragments-empty] [--json]
+python3 validate.py notes      --root <repo> --version X.Y.Z --out FILE [--repo owner/name]
 python3 validate.py ci-status  <owner/repo> <sha> [--check-name release-ready] [--token …]
 python3 validate.py tag-ancestor <owner/repo> <sha> [--branch main] [--token …]
 python3 validate.py registry-probe pypi|crates <name> <version>
@@ -80,6 +81,21 @@ python3 validate.py selftest
   fault, not a clean tree. `--require-fragments-empty` is the tag-time form:
   it asserts folding actually happened (no fragment left un-folded), rather
   than checking the draft again.
+- **`notes`** — writes the folded `## [X.Y.Z]` section to `--out`, for
+  `gh release edit "$TAG" --notes-file`. It exists because the two changelogs a
+  release produces here are not the same document and nothing joined them:
+  `skip-changelog` hands `CHANGELOG.md` to towncrier, but composing the release
+  **body** is a separate path inside release-please that still runs, off
+  conventional-commit subjects filtered through `changelog-sections`. A repo
+  whose real notes are fragments therefore publishes a page assembled from
+  commit subjects — irregex v2.1.1 shipped two lines against a section of a
+  hundred and ten, because eleven of its thirteen commits were `ci:`/`docs:`
+  and both are `hidden`. The section is towncrier's own render, so posting it
+  is fidelity-preserving; `towncrier build --draft` is not usable at tag time
+  because the fold already consumed the fragments it would read. A section over
+  GitHub's 125,000-character body limit is truncated at a whole bullet and
+  linked rather than rejected — v1.0.0's is 503,636, and failing there would
+  fail with the tag already pushed and immutable.
 - **`ci-status`** — polls `GET .../commits/{sha}/check-runs` for
   `required_check` and requires `conclusion == success` on that *exact* sha —
   not "the branch is green somewhere," but this commit, this check.
@@ -91,7 +107,7 @@ python3 validate.py selftest
   registry didn't answer — never treated as `absent`).
 - **`selftest`** — offline, no network, no token: proves every command above
   actually rejects the fixture it claims to reject. Run it after touching any
-  of the five modules (`uv run --no-project --python 3.12 --with
+  of the engine modules (`uv run --no-project --python 3.12 --with
   towncrier==25.8.0 python3 validate.py selftest` from this directory).
 
 Every command prints `::error::`-prefixed lines on stderr (so GitHub Actions
