@@ -169,7 +169,14 @@ def _anchor(heading: str) -> str:
 
 
 def notes(root: pathlib.Path, changelog: dict, version: str, repo: str | None) -> tuple[list[str], str]:
-    """Render the release body for `version`, and any fault that blocks it."""
+    """Render the release body for `version`, and any fault that blocks it.
+
+    The version is accepted tag-shaped (`v1.2.3`) as well as bare, because
+    every caller is a tag-triggered workflow holding `github.ref_name` and
+    nothing else. Normalizing here rather than in six workflows is the
+    difference between one rule and six chances to forget it.
+    """
+    version = version.removeprefix("v")
     found = _section(root / changelog["file"], version)
     if found is None:
         return [
