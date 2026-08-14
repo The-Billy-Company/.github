@@ -186,6 +186,67 @@ def _changelog_cases(results: list) -> None:
             results.append(("changelog/towncrier-draft-nonvacuous", _SKIP, "towncrier not on PATH"))
 
 
+def _notes_cases(results: list) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        (root / "changelog.d").mkdir()
+
+        faults, _ = _changelog.notes(root, _CHANGELOG_MANIFEST, "1.0.0", "o/r")
+        _expect(results, "notes/missing-file-rejected", bool(faults), str(faults))
+
+        (root / "CHANGELOG.md").write_text(
+            "<!-- towncrier release notes start -->\n\n"
+            "## [2.0.0] - 2026-02-02\n\n### Added\n\n- the newer one\n\n"
+            "## [1.0.0] - 2026-01-01\n\n### Added\n\n- the older one\n"
+        )
+        faults, _ = _changelog.notes(root, _CHANGELOG_MANIFEST, "3.0.0", "o/r")
+        _expect(results, "notes/absent-version-rejected", bool(faults), str(faults))
+
+        # The section must stop at the next release, not run to end of file:
+        # the failure mode is a release page that republishes its ancestors.
+        faults, body = _changelog.notes(root, _CHANGELOG_MANIFEST, "2.0.0", "o/r")
+        _expect(
+            results, "notes/section-stops-at-next-release",
+            not faults and "the newer one" in body and "the older one" not in body, body,
+        )
+
+        # And the last section in the file has no next heading to stop at.
+        faults, body = _changelog.notes(root, _CHANGELOG_MANIFEST, "1.0.0", "o/r")
+        _expect(
+            results, "notes/last-section-reaches-eof",
+            not faults and "the older one" in body, body,
+        )
+
+        # `### ` is a subsection, not a boundary — a naive `line.startswith("##")`
+        # would truncate every release at its own first category heading.
+        _expect(
+            results, "notes/subsection-heading-kept",
+            "### Added" in body, body,
+        )
+
+        (root / "CHANGELOG.md").write_text("## [1.0.0] - 2026-01-01\n\n")
+        faults, _ = _changelog.notes(root, _CHANGELOG_MANIFEST, "1.0.0", "o/r")
+        _expect(results, "notes/empty-section-rejected", bool(faults), str(faults))
+
+        # Over GitHub's ceiling the body must still post: truncated at a whole
+        # bullet and linked, never rejected with the tag already immutable.
+        bullet = "- " + "x" * 200 + "\n"
+        (root / "CHANGELOG.md").write_text(
+            "## [1.0.0] - 2026-01-01\n\n### Added\n\n" + bullet * 900
+        )
+        faults, body = _changelog.notes(root, _CHANGELOG_MANIFEST, "1.0.0", "o/r")
+        _expect(
+            results, "notes/over-ceiling-truncated-not-rejected",
+            not faults and 0 < len(body) <= _changelog.CEILING, f"{len(body)} chars",
+        )
+        _expect(
+            results, "notes/over-ceiling-cut-at-bullet-and-linked",
+            "blob/v1.0.0/CHANGELOG.md#100---2026-01-01" in body
+            and body[: body.index("\n\nThis section is")].rstrip().endswith("x" * 200),
+            body[-200:],
+        )
+
+
 def _github_cases(results: list) -> None:
     def transport_success(_url: str, _headers: dict) -> tuple[int, str]:
         return 200, '{"check_runs": [{"name": "release-ready", "status": "completed", "conclusion": "success"}]}'
@@ -247,6 +308,7 @@ def run() -> int:
     results: list[tuple[str, str, str]] = []
     _version_cases(results)
     _changelog_cases(results)
+    _notes_cases(results)
     _github_cases(results)
     _registry_cases(results)
     return _report(results)

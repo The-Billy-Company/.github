@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """package-release — the one release contract every Billy-Company OSS repo runs.
 
-Six commands, each answering exactly one question a release must not get
+Seven commands, each answering exactly one question a release must not get
 wrong. Every command prints `::error::`-annotated faults on stderr (so they
 surface directly on the GitHub Actions run) and exits non-zero on any fault;
 `--json` gets the same facts as a machine-readable report instead.
@@ -10,13 +10,15 @@ surface directly on the GitHub Actions run) and exits non-zero on any fault;
                                        every mirror (and, with --tag, the tag)?
     changelog  <root>                 are the fragments well-formed, and does
                                        towncrier actually render them?
+    notes      <root>                 the folded section for a version, as the
+                                       GitHub Release body it should have had.
     ci-status  <owner/repo> <sha>     did the required check succeed on this
                                        exact commit?
     tag-ancestor <owner/repo> <sha>   is this commit reachable from the
                                        protected branch, or a stray push?
     registry-probe <pypi|crates>      is this version already published?
-    selftest                          offline proof the five commands above
-                                       reject what they claim to reject.
+    selftest                          offline proof the commands above reject
+                                       what they claim to reject.
 
 See README.md for the `release.toml` schema every command but `selftest`
 reads from `--root`.
@@ -70,6 +72,17 @@ def cmd_changelog(args: argparse.Namespace) -> int:
     contract = _load_manifest(root, args.manifest)
     faults = _changelog.check(root, contract["changelog"], args.version, args.require_fragments_empty)
     return _emit(faults, args.json)
+
+
+def cmd_notes(args: argparse.Namespace) -> int:
+    root = pathlib.Path(args.root).resolve()
+    contract = _load_manifest(root, args.manifest)
+    faults, body = _changelog.notes(root, contract["changelog"], args.version, args.repo)
+    if faults:
+        return _emit(faults, args.json)
+    pathlib.Path(args.out).write_text(body, encoding="utf-8")
+    print(f"wrote {len(body):,} chars of the {args.version} section to {args.out}", file=sys.stderr)
+    return _emit([], args.json)
 
 
 def cmd_ci_status(args: argparse.Namespace) -> int:
@@ -126,6 +139,15 @@ def main(argv: list[str] | None = None) -> int:
                     help="assert every fragment was folded (post release-build state)")
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_changelog)
+
+    p = sub.add_parser("notes")
+    common["root"](p)
+    p.add_argument("--manifest", default="release.toml")
+    p.add_argument("--version", required=True, help="the version whose section to publish")
+    p.add_argument("--out", required=True, help="write the body here, for `gh release edit --notes-file`")
+    p.add_argument("--repo", default=None, help="owner/name, for the link a truncation adds")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(fn=cmd_notes)
 
     p = sub.add_parser("ci-status")
     p.add_argument("repo", help="owner/name")
