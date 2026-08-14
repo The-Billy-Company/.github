@@ -217,6 +217,13 @@ def _notes_cases(results: list) -> None:
             not faults and "the older one" in body, body,
         )
 
+        # Every caller passes `github.ref_name`, which is tag-shaped.
+        faults, tagged = _changelog.notes(root, _CHANGELOG_MANIFEST, "v1.0.0", "o/r")
+        _expect(
+            results, "notes/tag-shaped-version-accepted",
+            not faults and tagged == body, str(faults),
+        )
+
         # `### ` is a subsection, not a boundary — a naive `line.startswith("##")`
         # would truncate every release at its own first category heading.
         _expect(
