@@ -1,31 +1,54 @@
+---
+doc_radar:
+  sentinels:
+    - file: actions/package-release/action.yml
+      contains: ['version: "0.12.17"', 'version: 0.16.0', 'steps.prepare.outputs.zig']
+    - file: actions/package-release/requirements.txt
+      contains: ['towncrier==26.9.0', 'click==8.5.0', 'jinja2==3.1.6', 'markupsafe==3.0.3']
+    - file: actions/package-release/_run.py
+      contains: ['shlex.split', '"--require-hashes"', '"SOURCE_DATE_EPOCH"']
+    - file: actions/package-release/validate.py
+      contains: ['import tomllib']
+---
+
 # package-release
 
-The release contract every publishable Billy-Company OSS repository (`irregex`,
-`gist`, `relate`, `blast`, `zoning`, `sheng`, `brigade`) runs — one stdlib-only
-Python engine (`validate.py` + `_version.py` / `_changelog.py` / `_github.py` /
-`_registry.py`), wrapped as a composite action so `ci.yml` and `release.yml`
-in every repo call the *same* code instead of six similar copies of the same
-bash.
+We use one release contract across our OSS repositories. Pin the action to a full commit SHA whose CI passed, and declare the package's authority and changelog in `release.toml`.
 
-## Why a shared action instead of six copies
+```yaml
+- uses: The-Billy-Company/.github/actions/package-release@FULL_COMMIT_SHA
+  with:
+    command: version
+    args: --root . --tag ${{ github.ref_name }}
 
-Each repo used to hand-roll its own "does the tag name the declared version"
-check and its own ad hoc changelog-draft guard. They were nearly identical and
-drifted anyway — `irregex`/`gist` checked more than `relate`/`blast`, and none
-of them checked fragment filenames or bodies at all. A rejection message is
-part of the contract too: an author who gets a different error shape from
-`sheng` than from `gist` for the same mistake has learned nothing reusable.
-One engine, one message shape, adopted identically everywhere.
+- uses: The-Billy-Company/.github/actions/package-release@FULL_COMMIT_SHA
+  with:
+    command: ci-status
+    args: ${{ github.repository }} ${{ github.sha }}
+```
 
-## The manifest: `release.toml`
+## Arguments and results
 
-Each repo declares a small `release.toml` at its root. Every field below is
-required unless marked optional.
+`command` names one of the seven commands below. `args` uses POSIX quoting: `--root 'a directory with spaces'`. Quotes group arguments; dollar signs, backticks, wildcards and shell operators stay literal.
+
+The action preserves the command's stdout, stderr and exit status. `result` is its last stdout line, including on failure; `version` returns a JSON object containing `version`, `registry-probe` returns a state, and other successful commands normally return `ok`. With `--json`, a multiline report's last line remains `}`.
+
+## Setup
+
+We install tools only after the command's own argument parser accepts the input. Cargo version authorities use Python's TOML parser; Zig authorities use Zig's ZON parser and its native field locations. The action installs Zig 0.16.0 only for a Zig authority or `selftest`.
+
+The entry point needs Python 3.11 or newer, as supplied by current GitHub-hosted runners. A self-hosted runner must provide it before calling the action.
+
+`changelog` and `selftest` get a private Python 3.12 environment through pinned uv 0.12.17. Its complete Towncrier closure comes from `requirements.txt`, with hashes, wheels only and a two-day release floor. Every invocation owns its temporary files and removes them after printing its outputs.
+
+Towncrier 26.9.0 supports reproducible dates. For a changelog draft, we preserve an explicit `SOURCE_DATE_EPOCH`; otherwise we derive it from the package's HEAD commit when Git is available. Dates default to UTC; an explicit `TZ` stays yours.
+
+## The manifest
 
 ```toml
 [package]
-name = "irregex"                 # human-readable, for messages only
-version_source = "build.zig.zon" # the ONE file whose version is authoritative
+name = "irregex"                 # human-readable
+version_source = "build.zig.zon" # the authoritative file
 version_kind = "zig-zon"         # zig-zon | cargo-workspace | cargo-package
 
 [changelog]
@@ -37,99 +60,45 @@ stem_pattern = '^\+[a-z0-9]+(-[a-z0-9]+)*$'
 min_body_chars = 40
 
 [ci]
-required_check = "release-ready"  # the aggregate job release.yml polls for
-default_branch = "main"           # a tag must be reachable from here
+required_check = "release-ready"
+default_branch = "main"
 
-[registries]                      # optional — omit a key the repo doesn't publish to
+[registries] # optional publication inventory
 pypi = "irregex"
 crates = "irgx"
-go_module = "github.com/The-Billy-Company/irregex/bindings/go"
+go_module = "github.com/The-Billy-Company/irregex/bindings/go/v2"
 ```
 
-`version_kind`:
-
-- `zig-zon` — a `.version = "X.Y.Z"` field in a Zig `build.zig.zon`.
-- `cargo-workspace` — a `version` under `[workspace.package]` (one authority
-  for every member, e.g. `zoning`).
-- `cargo-package` — a `version` under a single crate's `[package]` (`sheng`,
-  `brigade`).
+`zig-zon` reads the root `.version` field. `cargo-workspace` reads `[workspace.package].version`; `cargo-package` reads `[package].version`. The authoritative version must carry its `x-release-please-version` marker on the same line, so release-please can actually rewrite it.
 
 ## The seven commands
 
 ```bash
-python3 validate.py version    --root <repo> [--tag vX.Y.Z] [--json]
-python3 validate.py changelog  --root <repo> [--version X.Y.Z] [--require-fragments-empty] [--json]
-python3 validate.py notes      --root <repo> --version X.Y.Z --out FILE [--repo owner/name]
-python3 validate.py ci-status  <owner/repo> <sha> [--check-name release-ready] [--token …]
-python3 validate.py tag-ancestor <owner/repo> <sha> [--branch main] [--token …]
-python3 validate.py registry-probe pypi|crates <name> <version>
+python3 validate.py version --root REPO [--tag vX.Y.Z] [--json]
+python3 validate.py changelog --root REPO [--version X.Y.Z] [--require-fragments-empty] [--json]
+python3 validate.py notes --root REPO --version X.Y.Z --out FILE [--repo owner/name]
+python3 validate.py ci-status OWNER/REPO SHA [--check-name release-ready] [--token TOKEN]
+python3 validate.py tag-ancestor OWNER/REPO SHA [--branch main] [--token TOKEN]
+python3 validate.py registry-probe pypi|crates NAME VERSION
 python3 validate.py selftest
 ```
 
-- **`version`** — the version `version_source` declares must match every
-  other file in the tree carrying an `x-release-please-version` marker
-  comment (the same marker release-please itself edits), must appear in
-  `release-please-config.json`'s `extra-files` if that file exists, and —
-  with `--tag` — must equal the tag being released.
-- **`changelog`** — every fragment's *filename* must match
-  `<stem_pattern>.<one of types>.md`, and its *body* must clear
-  `min_body_chars`, not open with a bare `- `/`* ` (towncrier already renders
-  the bullet), and not be a placeholder (`TODO`, `TBD`, …). Then towncrier
-  itself runs `build --draft`, so a filename `_changelog.py` didn't reject but
-  towncrier's own parser still can't read is still caught — and if fragments
-  exist on disk but the draft renders nothing, that is treated as a *wiring*
-  fault, not a clean tree. `--require-fragments-empty` is the tag-time form:
-  it asserts folding actually happened (no fragment left un-folded), rather
-  than checking the draft again.
-- **`notes`** — writes the folded `## [X.Y.Z]` section to `--out`, for
-  `gh release edit "$TAG" --notes-file`. It exists because the two changelogs a
-  release produces here are not the same document and nothing joined them:
-  `skip-changelog` hands `CHANGELOG.md` to towncrier, but composing the release
-  **body** is a separate path inside release-please that still runs, off
-  conventional-commit subjects filtered through `changelog-sections`. A repo
-  whose real notes are fragments therefore publishes a page assembled from
-  commit subjects — irregex v2.1.1 shipped two lines against a section of a
-  hundred and ten, because eleven of its thirteen commits were `ci:`/`docs:`
-  and both are `hidden`. The section is towncrier's own render, so posting it
-  is fidelity-preserving; `towncrier build --draft` is not usable at tag time
-  because the fold already consumed the fragments it would read. A section over
-  GitHub's 125,000-character body limit is truncated at a whole bullet and
-  linked rather than rejected — v1.0.0's is 503,636, and failing there would
-  fail with the tag already pushed and immutable.
-- **`ci-status`** — polls `GET .../commits/{sha}/check-runs` for
-  `required_check` and requires `conclusion == success` on that *exact* sha —
-  not "the branch is green somewhere," but this commit, this check.
-- **`tag-ancestor`** — `GET .../compare/{sha}...{branch}`; rejects unless
-  `sha` is `identical` to or an ancestor of (`ahead` from) the branch tip, so
-  a tag cut from a detached or unmerged commit cannot publish.
-- **`registry-probe`** — `absent` (safe to publish), `present` (a prior
-  attempt already got there — treat a retry as success), or `error` (the
-  registry didn't answer — never treated as `absent`).
-- **`selftest`** — offline, no network, no token: proves every command above
-  actually rejects the fixture it claims to reject. Run it after touching any
-  of the engine modules (`uv run --no-project --python 3.12 --with
-  towncrier==25.8.0 python3 validate.py selftest` from this directory).
+**`version`** checks every marked mirror, release-please's `extra-files` when configured, and the tag when supplied. Native parsers reject malformed declarations, duplicate keys and a version hidden in a comment, string or nested dependency.
 
-Every command prints `::error::`-prefixed lines on stderr (so GitHub Actions
-surfaces them as annotations on the failing step) and is silent-success on
-stdout (`ok`) unless `--json` is given, which reports the same facts as one
-JSON object instead.
+**`changelog`** checks fragment names, types and bodies, then runs a real Towncrier draft. A typo Towncrier silently drops cannot turn the gate green. The tag-time `--require-fragments-empty` form requires both an empty fragment directory and the exact folded heading.
 
-## Using it from a workflow
+**`notes`** writes the folded section as the release body, accepting a bare version or a leading `v`. release-please's `skip-changelog` controls its file, not its release body; without this command, real fragment notes get replaced with filtered commit subjects. Over GitHub's 125,000-character limit, we cut at a whole bullet and link the rest instead of failing after the tag is immutable.
 
-```yaml
-- uses: The-Billy-Company/.github/actions/package-release@main
-  with:
-    command: version
-    args: --root . --tag ${{ github.ref_name }}
+**`ci-status`** polls for the named check's successful conclusion on the exact commit. An absent, failed or timed-out check cannot publish.
 
-- uses: The-Billy-Company/.github/actions/package-release@main
-  with:
-    command: ci-status
-    args: ${{ github.repository }} ${{ github.sha }}
-```
+**`tag-ancestor`** requires the commit to be reachable from the protected branch. A detached or unmerged tag cannot publish.
 
-Pin `@main` to a commit SHA once this action has its first real commit —
-every third-party action referenced elsewhere in these repos is SHA-pinned,
-and a self-owned action should hold to the same bar as soon as there is a SHA
-to pin to.
+**`registry-probe`** reports `absent`, `present` or `error`. A registry outage stays an error; a completed prior upload makes a retry idempotent.
+
+**`selftest`** proves the rejection contracts offline. A direct local run needs Zig for ZON fixtures and Towncrier for rendering; missing optional render tooling is reported as a skip, never counted as a pass. The composite action installs both and runs the full suite.
+
+## Local checks and CI
+
+The actual workflow lives in [`.github/workflows/docs.yml`](../../.github/workflows/docs.yml). It runs the composite action on Linux, macOS and Windows, checks literal quoted paths, negative calls, concurrent entry points and exact outputs, and runs actionlint, zizmor, Markdown structure and relative-link checks.
+
+Run `python3 _actiontest.py -v` here for process-boundary checks. Run `python3 validate.py selftest` with the pinned tools on PATH for parser and release-contract checks. These call the real engine against temporary files; they do not publish anything.

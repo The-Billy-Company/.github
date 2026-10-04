@@ -12,43 +12,42 @@ inputs:
       command's arguments.
     required: true
   args:
-    description: the command's remaining CLI arguments, space-separated.
+    description: Remaining CLI arguments, with POSIX quotes for spaces; never shell-expanded.
     required: false
     default: ""
 outputs:
   result:
-    description: the command's last stdout line (registry-probe's absent/present/error; "ok" otherwise).
+    description: The command's last stdout line, including on failure; see the README for each result.
     value: ${{ steps.run.outputs.result }}
 runs:
   using: composite
   steps:
-    # Only `changelog` and `selftest` shell out to a real towncrier; the other
-    # four commands are stdlib-only and pay no setup cost.
-    - if: inputs.command == 'changelog' || inputs.command == 'selftest'
-      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+    # Parse the existing API once to discover tools; ordinary Cargo version
+    # calls and the five other commands pay no unnecessary compiler setup.
+    - id: prepare
+      shell: bash
+      env:
+        RELEASE_COMMAND: ${{ inputs.command }}
+        RELEASE_ARGS: ${{ inputs.args }}
+      run: python3 "$GITHUB_ACTION_PATH/_run.py" --prepare
+
+    - if: steps.prepare.outputs.zig == 'true'
+      uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
       with:
+        version: 0.16.0
+        use-cache: false
+
+    # Only `changelog` and `selftest` shell out to a real towncrier.
+    - if: steps.prepare.outputs.towncrier == 'true'
+      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      with:
+        version: "0.12.17"
         enable-cache: false
 
     - id: run
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
-      run: |
-        set +e
-        if [[ "${{ inputs.command }}" == "changelog" || "${{ inputs.command }}" == "selftest" ]]; then
-          uv run --no-project --python 3.12 --with towncrier==25.8.0 \
-            python3 "${{ github.action_path }}/validate.py" ${{ inputs.command }} ${{ inputs.args }} \
-            >/tmp/pkgrelease.out 2>/tmp/pkgrelease.err
-        else
-          python3 "${{ github.action_path }}/validate.py" ${{ inputs.command }} ${{ inputs.args }} \
-            >/tmp/pkgrelease.out 2>/tmp/pkgrelease.err
-        fi
-        code=$?
-        cat /tmp/pkgrelease.out
-        cat /tmp/pkgrelease.err >&2
-        {
-          echo "result<<PKGRELEASE_EOF"
-          tail -n1 /tmp/pkgrelease.out
-          echo "PKGRELEASE_EOF"
-        } >> "$GITHUB_OUTPUT"
-        exit "$code"
+        RELEASE_COMMAND: ${{ inputs.command }}
+        RELEASE_ARGS: ${{ inputs.args }}
+      run: python3 "$GITHUB_ACTION_PATH/_run.py"

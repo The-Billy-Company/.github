@@ -1,0 +1,168 @@
+# This repository is documentation, almost entirely — a dead relative link
+# or an unclosed fence here is the whole defect, not a symptom of one.
+name: docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  markdown-lint:
+    name: structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24.2.0
+        with:
+          globs: "**/*.md"
+
+  link-check:
+    name: links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          # Relative-link integrity is what matters most here; offline mode
+          # keeps an external host's outage from failing this gate.
+          args: >-
+            --no-progress
+            --offline
+            --exclude-loopback
+            './**/*.md'
+          fail: true
+
+  package-release:
+    name: package-release (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/actions/package-release
+        with:
+          command: selftest
+      - shell: bash
+        run: python3 actions/package-release/_actiontest.py -v
+      - id: fixture
+        shell: bash
+        run: python3 actions/package-release/_actiontest.py --fixture
+      - id: version
+        uses: $/actions/package-release
+        with:
+          command: version
+          args: ${{ steps.fixture.outputs.args }}
+      - id: notes
+        uses: $/actions/package-release
+        with:
+          command: notes
+          args: ${{ steps.fixture.outputs.notes_args }}
+      - uses: $/actions/package-release
+        with:
+          command: changelog
+          args: ${{ steps.fixture.outputs.changelog_args }}
+      - uses: $/actions/package-release
+        with:
+          command: tag-ancestor
+          args: ${{ github.repository }} ${{ github.sha }} --branch main
+        if: github.ref == 'refs/heads/main'
+      - id: rejected-tag
+        continue-on-error: true
+        uses: $/actions/package-release
+        with:
+          command: version
+          args: ${{ steps.fixture.outputs.bad_args }}
+      - id: rejected-command
+        continue-on-error: true
+        uses: $/actions/package-release
+        with:
+          command: version; touch injected
+      - id: rejected-quotes
+        continue-on-error: true
+        uses: $/actions/package-release
+        with:
+          command: selftest
+          args: "'unterminated"
+      - name: Prove failures and outputs survived the composite boundary
+        shell: bash
+        env:
+          VERSION_RESULT: ${{ steps.version.outputs.result }}
+          NOTES_RESULT: ${{ steps.notes.outputs.result }}
+          TAG_OUTCOME: ${{ steps.rejected-tag.outcome }}
+          COMMAND_OUTCOME: ${{ steps.rejected-command.outcome }}
+          QUOTES_OUTCOME: ${{ steps.rejected-quotes.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          assert json.loads(os.environ['VERSION_RESULT']) == {'version': '1.2.3'}
+          assert os.environ['NOTES_RESULT'] == 'ok'
+          assert all(os.environ[k] == 'failure' for k in ['TAG_OUTCOME', 'COMMAND_OUTCOME', 'QUOTES_OUTCOME'])
+          assert not pathlib.Path('injected').exists()
+          assert not list(pathlib.Path(os.environ['RUNNER_TEMP']).glob('package-release-*'))
+          PY
+
+  actions:
+    name: actionlint and zizmor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Released 1.7.12 rejects GitHub's supported $/ syntax. PR 732 fixes
+      # the native metadata/cache path; this is an unmerged third-party fork,
+      # not a release. Its go.mod/go.sum match 1.7.12 byte for byte.
+      - name: Build the reviewed native actionlint fix
+        shell: bash
+        env:
+          SOURCE_URL: https://codeload.github.com/ArloL/actionlint/tar.gz/b02c24b743cc88a26b280339814eb4ece91c32cb
+          SOURCE_SHA256: c2472eca5a1610a52815dc88d15a07eda4680180f83e02568fa5042cf10e5094
+          GOWORK: "off"
+          GOTOOLCHAIN: local
+          GOMAXPROCS: "2"
+        run: |
+          source_dir=$(mktemp -d)
+          trap 'rm -rf "$source_dir"' EXIT
+          curl --fail --location --retry 3 "$SOURCE_URL" -o "$source_dir/source.tar.gz"
+          printf '%s  %s\n' "$SOURCE_SHA256" "$source_dir/source.tar.gz" | sha256sum --check
+          tar -xzf "$source_dir/source.tar.gz" --strip-components=1 -C "$source_dir"
+          mkdir -p "$RUNNER_TEMP/actionlint-bin"
+          (cd "$source_dir" && go build -buildvcs=false -mod=readonly -p=1 -o "$RUNNER_TEMP/actionlint-bin/actionlint" ./cmd/actionlint)
+          echo "$RUNNER_TEMP/actionlint-bin" >> "$GITHUB_PATH"
+      - run: actionlint
+      # Templates are checked after substituting GitHub's template placeholder.
+      - shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, subprocess, tempfile
+          with tempfile.TemporaryDirectory() as tmp:
+              for template in pathlib.Path('workflow-templates').glob('*.yml'):
+                  rendered = pathlib.Path(tmp) / template.name
+                  rendered.write_text(template.read_text().replace('$default-branch', 'main'))
+                  subprocess.run(['actionlint', str(rendered)], check=True)
+          PY
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.17"
+          enable-cache: false
+      - run: uv run --no-project --exclude-newer P2D --with zizmor==1.30.1 zizmor --no-online-audits --strict-collection .
