@@ -110,7 +110,7 @@ def main(prepare: bool = False) -> int:
                         check=False,
                     ).returncode
                 except (FileNotFoundError, PermissionError) as error:
-                    stderr.write(f"{error}\n".encode())
+                    stderr.write(f"{command[0]}: {error}\n".encode())
                     code = 127 if isinstance(error, FileNotFoundError) else 126
                 if code:
                     break

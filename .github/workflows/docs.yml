@@ -138,7 +138,8 @@ jobs:
           SOURCE_URL: https://codeload.github.com/ArloL/actionlint/tar.gz/b02c24b743cc88a26b280339814eb4ece91c32cb
           SOURCE_SHA256: c2472eca5a1610a52815dc88d15a07eda4680180f83e02568fa5042cf10e5094
           GOWORK: "off"
-          GOTOOLCHAIN: local
+          GOTOOLCHAIN: go1.27.0
+          GOSUMDB: sum.golang.org
           GOMAXPROCS: "2"
         run: |
           source_dir=$(mktemp -d)
