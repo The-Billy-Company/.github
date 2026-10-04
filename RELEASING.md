@@ -1,3 +1,10 @@
+---
+doc_radar:
+  sentinels:
+    - file: actions/package-release/action.yml
+      contains: ["version | changelog | notes | ci-status | tag-ancestor |", "registry-probe | selftest", "using: composite"]
+---
+
 # Releasing in The Billy Company
 
 We publish independently versioned open-source packages through one shared
@@ -247,13 +254,12 @@ manifest — canonical version source and its kind (a Zig `build.zig.zon`
 field, a Cargo workspace version, or a single crate's own), the mirrors that
 must agree with it, the changelog fragment directory and quality bar, the
 registries it publishes to, and the name of its `release-ready` aggregate
-check — and exposes six commands (`version`, `changelog`, `ci-status`,
+check — and exposes seven commands (`version`, `changelog`, `notes`, `ci-status`,
 `tag-ancestor`, `registry-probe`, `selftest`), each emitting one consistent,
 `::error::`-annotated rejection for the fault it's checking rather than a
 different error shape per repository. `selftest` runs offline, with no
-network and no token, and proves the other five commands actually reject the
-fixtures they claim to reject — the thing to run after touching any of the
-five modules behind them. A change to the lifecycle itself — a new rejection
+network and no token, and checks command behavior against adverse fixtures.
+Run it after touching the validation modules. A change to the lifecycle itself — a new rejection
 class, a new registry, a new verification step — is a change to that one
 action, not to seven copies of a workflow. Small, already-real drift that
 isn't worth silently calling "standard" lives in
