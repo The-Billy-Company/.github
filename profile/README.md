@@ -1,7 +1,5 @@
 # An Introduction
 
-Hi guys, Griffin here, founder and creator of Billy.
-
 We are The Billy Company, the team behind the personal AI Billy.
 
 Our team's expertise and curiosity span systems programming, artificial
