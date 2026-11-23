@@ -1,0 +1,22 @@
+# Copyright (c) 2026 The Billy Company
+name: Copyright headers
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  copyright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test the copyright checker
+        run: python3 -m unittest discover -s tools/copyright -p 'test_*.py'
+      - name: Check source copyright headers
+        run: python3 tools/copyright/check.py --root .

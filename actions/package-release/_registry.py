@@ -1,3 +1,4 @@
+# Copyright (c) 2026 The Billy Company
 """Ask a registry whether a version already exists, before minting a credential.
 
 Both probes answer the same three-way question: `absent` (publish it),

@@ -1,3 +1,4 @@
+# Copyright (c) 2026 The Billy Company
 """Bind composite-action inputs as arguments and retain the command's output."""
 
 from __future__ import annotations

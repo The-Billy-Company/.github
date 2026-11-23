@@ -1,3 +1,4 @@
+// Copyright (c) 2026 The Billy Company
 //! Read the package authority with Zig's ZON parser, including its diagnostics.
 const std = @import("std");
 

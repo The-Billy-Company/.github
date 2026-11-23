@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 The Billy Company
 """package-release — the one release contract every Billy-Company OSS repo runs.
 
 Seven commands, each answering exactly one question a release must not get

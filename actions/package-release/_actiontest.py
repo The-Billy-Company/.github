@@ -1,3 +1,4 @@
+# Copyright (c) 2026 The Billy Company
 """Exercise the composite entry point against real files, processes and outputs."""
 
 from __future__ import annotations

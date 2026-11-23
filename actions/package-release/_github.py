@@ -1,3 +1,4 @@
+# Copyright (c) 2026 The Billy Company
 """Two questions the GitHub REST API answers, asked before a publish starts.
 
 Both take a `transport` so `--selftest` can prove the decision logic against

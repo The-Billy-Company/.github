@@ -1,3 +1,4 @@
+# Copyright (c) 2026 The Billy Company
 """Fragments are the release notes. Prove they exist, parse, and fold — then
 hand the folded section to the GitHub Release that names it.
 

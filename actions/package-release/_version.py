@@ -1,3 +1,4 @@
+# Copyright (c) 2026 The Billy Company
 """One declared version, many mirrors — prove they still agree.
 
 Generalizes the per-repo `tools/version_parity.py` copies that used to hand-roll

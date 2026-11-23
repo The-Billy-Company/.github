@@ -1,3 +1,4 @@
+# Copyright (c) 2026 The Billy Company
 """Offline proof that every gate actually rejects what it claims to reject.
 
 No network, no GitHub token, and towncrier is optional: the filename/body
